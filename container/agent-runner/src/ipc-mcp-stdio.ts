@@ -10,6 +10,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
+import { grokWebSearch } from './grok-web-search.js';
 
 const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
@@ -283,7 +284,7 @@ Use available_groups.json to find the JID for a group. The folder name must be c
 
 server.tool(
   'web_search',
-  'Search the web using Grok (xAI). Returns search results with sources and citations. Use this for any web search, current events, real-time information, or fact-checking.',
+  'Search the web using Grok (xAI). Uses xAI\'s native web_search tool via the Responses API for real-time results with inline citations. Use for current events, fact-checking, or any question needing up-to-date information.',
   {
     query: z.string().describe('The search query'),
   },
@@ -295,62 +296,11 @@ server.tool(
       };
     }
 
-    try {
-      const response = await fetch('https://api.x.ai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${xaiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'grok-3',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a web search assistant. Search the web and provide comprehensive, factual results with sources. Be concise but thorough.',
-            },
-            {
-              role: 'user',
-              content: args.query,
-            },
-          ],
-          search_parameters: {
-            mode: 'auto',
-            return_citations: true,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          content: [{ type: 'text' as const, text: `Web search failed (${response.status}): ${errorText}` }],
-          isError: true,
-        };
-      }
-
-      const data = await response.json() as {
-        choices?: Array<{ message?: { content?: string } }>;
-        search_results?: Array<{ title?: string; url?: string; snippet?: string }>;
-      };
-      const content = data.choices?.[0]?.message?.content || 'No results returned.';
-
-      // Include search result citations if available
-      let resultText = content;
-      if (data.search_results && data.search_results.length > 0) {
-        resultText += '\n\n---\nSources:\n';
-        for (const sr of data.search_results) {
-          resultText += `- ${sr.title || 'Untitled'}: ${sr.url || ''}\n`;
-        }
-      }
-
-      return { content: [{ type: 'text' as const, text: resultText }] };
-    } catch (err) {
-      return {
-        content: [{ type: 'text' as const, text: `Web search error: ${err instanceof Error ? err.message : String(err)}` }],
-        isError: true,
-      };
-    }
+    const result = await grokWebSearch(args.query, xaiApiKey);
+    return {
+      content: [{ type: 'text' as const, text: result.text }],
+      isError: result.isError,
+    };
   },
 );
 
