@@ -515,17 +515,21 @@ async function main(): Promise<void> {
     sdkEnv[key] = value;
   }
 
-  // Write Google service account key to temp file so Python/gdrive can use it
+  // Write Google service account key to temp file so Python/gdrive can use it.
+  // Set env vars on both process.env AND sdkEnv — the SDK passes sdkEnv to
+  // Bash subprocesses, so process.env alone won't reach them.
   const googleKey = sdkEnv['GOOGLE_SERVICE_ACCOUNT_KEY'];
   if (googleKey) {
     const keyPath = '/tmp/gcloud-service-account.json';
     fs.writeFileSync(keyPath, googleKey, { mode: 0o600 });
     process.env['GOOGLE_APPLICATION_CREDENTIALS'] = keyPath;
+    sdkEnv['GOOGLE_APPLICATION_CREDENTIALS'] = keyPath;
     log('Wrote Google service account key to ' + keyPath);
   }
   const googleFolderId = sdkEnv['GOOGLE_DRIVE_FOLDER_ID'];
   if (googleFolderId) {
     process.env['GOOGLE_DRIVE_FOLDER_ID'] = googleFolderId;
+    sdkEnv['GOOGLE_DRIVE_FOLDER_ID'] = googleFolderId;
   }
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
